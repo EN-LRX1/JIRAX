@@ -9,17 +9,16 @@ from langchain_core.prompts import PromptTemplate
 from templates import PAYLOAD_GENERATION_TEMPLATE_V4
 from fetcher_sql import fetch_and_save_issues
 import re
-
 # --- CONFIGURACIÓN ---
 load_dotenv()
 JIRA_DOMAIN = os.getenv("JIRA_DOMAIN")
 EMAIL = os.getenv("EMAIL")
 API_TOKEN = os.getenv("API_TOKEN")
+LLM_MODEL = os.getenv("LLM_MODEL", "gpt-oss:latest")
 OUTPUT_FILE = os.getenv("OUTPUT_FILE", "ucm_issues.csv")
 JIRA_VERIFY = os.getenv("JIRA_VERIFY", "true").lower() not in ("0", "false", "no")
-
 # --- CARGA ÚNICA DEL LLM Y PROMPT ---
-LLM = ChatOllama(model="gpt-oss:latest", temperature=0)
+LLM = ChatOllama(model=LLM_MODEL, temperature=0)
 PAYLOAD_PROMPT = PromptTemplate.from_template(PAYLOAD_GENERATION_TEMPLATE_V4)
 
 def load_csv_to_memory():
@@ -34,58 +33,68 @@ def load_csv_to_memory():
             if key and key.strip():
                 data[key.strip().upper()] = row
     return data
-
 # Initialize CSV_DATA globally
 CSV_DATA = load_csv_to_memory()
-
 # --- FUNCIONES AUXILIARES ---
 def update_jira_issue_api(issue_key: str, update_payload_str: str) -> str:
-    """Updates a Jira issue using the REST API."""
+    """Updates a Jira issue using the REST API v3 (PUT /rest/api/3/issue/{key})."""
+
     if issue_key not in ("UCM-62", "UCM-64"):
-        return f"Permission Error: This test agent is only allowed to modify issues UCM-62 and UCM-64. Attempt to modify {issue_key} was denied."
+        return (f"Permission Error: This test agent is only allowed to modify issues UCM-62 and UCM-64. "
+                f"Attempt to modify {issue_key} was denied.")
+
     if not all([JIRA_DOMAIN, EMAIL, API_TOKEN]):
         return "Error: Missing Jira credentials (JIRA_DOMAIN, EMAIL, API_TOKEN)."
 
     url = f"https://{JIRA_DOMAIN}/rest/api/3/issue/{issue_key}"
-    headers = {"Accept": "application/json", "Content-Type": "application/json"}
+    session = requests.Session()
+    session.auth = HTTPBasicAuth(EMAIL, API_TOKEN)
+    session.verify = False # Dentro de la empresa por proxys y firewall !!
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json"
+    }
     try:
         payload_dict = json.loads(update_payload_str)
-        fields_to_update = payload_dict.get("fields", {})
+    except json.JSONDecodeError:
+        return (f"Error: The 'update_payload_str' is not a valid JSON string. "
+                f"Content: {update_payload_str}")
 
-        if "customfield_10193" in fields_to_update and isinstance(fields_to_update["customfield_10193"], str):
-            text_content = fields_to_update["customfield_10193"]
-            fields_to_update["customfield_10193"] = {
-                "version": 1, "type": "doc",
-                "content": [{"type": "paragraph", "content": [{"type": "text", "text": text_content}]}]
-            }
+    fields_to_update = (payload_dict.get("fields") or {}).copy()
+    # Si customfield_10193 es string, convierto a ADF (doc -> paragraph -> text)
+    if isinstance(fields_to_update.get("customfield_10193"), str):
+        text_content = fields_to_update["customfield_10193"]
+        fields_to_update["customfield_10193"] = {
+            "version": 1,
+            "type": "doc",
+            "content": [
+                {"type": "paragraph", "content": [{"type": "text", "text": text_content}]}
+            ]
+        }
+    variables_prohibidas = [
+        "key", "status", "assignee", "customfield_10190", "customfield_10191",
+        "customfield_10192", "customfield_10196", "customfield_10194",
+        "customfield_10222", "customfield_10213", "customfield_10248"
+    ]
+    for k in variables_prohibidas:
+        fields_to_update.pop(k, None)
 
-        variables_prohibidas = [
-            "key", "status", "assignee", "customfield_10190", "customfield_10191",
-            "customfield_10192", "customfield_10196", "customfield_10194",
-            "customfield_10222", "customfield_10213", "customfield_10248"
-        ]
-        for k in variables_prohibidas:
-            fields_to_update.pop(k, None)
-        
-        if not fields_to_update:
-            return f"Skipped: No valid fields to update for issue {issue_key} after filtering."
-
-        jira_payload = {"fields": fields_to_update}
-        print(f"SENDING: PUT {url} with Payload: {json.dumps(jira_payload, indent=2)}")
-        
-        response = requests.put(
-            url, data=json.dumps(jira_payload), headers=headers,
-            auth=HTTPBasicAuth(EMAIL, API_TOKEN), verify=False
-        )
-        
-        if response.status_code == 204:
+    if not fields_to_update:
+        return f"Skipped: No valid fields to update for issue {issue_key} after filtering."
+    jira_payload = {"fields": fields_to_update}
+    try:
+        print(f"SENDING: PUT {url} with Payload: {json.dumps(jira_payload, ensure_ascii=False)}")
+        resp = session.put(url, headers=headers, json=jira_payload, timeout=30)
+        if resp.status_code == 204:
             return f"Success: Issue {issue_key} was updated correctly."
         else:
-            return f"Error updating issue {issue_key}. Code: {response.status_code}. Response: {response.text}"
-            
-    except json.JSONDecodeError:
-        return f"Error: The 'update_payload_str' is not a valid JSON string. Content: {update_payload_str}"
-    except Exception as e:
+            try:
+                err_json = resp.json()
+            except Exception:
+                err_json = resp.text
+            return f"Error updating issue {issue_key}. Code: {resp.status_code}. Response: {err_json}"
+
+    except requests.RequestException as e:
         return f"Unexpected error while updating the issue: {e}"
 
 def extract_all_issue_keys(text: str) -> list[str]:
@@ -98,7 +107,6 @@ def extract_all_issue_keys(text: str) -> list[str]:
         print("No specific issue keys found in instruction, targeting ALL issues from CSV.")
         return list(CSV_DATA.keys())
     return list(set(matches))
-
 # --- FLUJO PRINCIPAL ---
 def correction_flow(user_instruction: str):
     print("\n--- 0. Updating local data from Jira... ---")
