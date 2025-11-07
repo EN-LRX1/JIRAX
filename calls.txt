@@ -1,0 +1,1 @@
+Status/workflow: Para cambiar el estado, no usamos edit, en cambio se usa transitions (POST /rest/api/3/issue/{key}/transitions) en lugar de editar status.
