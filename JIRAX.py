@@ -128,13 +128,19 @@ def process_single_issue(issue_key: str, all_issues_data: dict, vector_store):
             curr_description = curr_description[:MAX_DESCRIPTION_LENGTH] + "\n... (CONTENT TRUNCATED)"
 
         clean_current_issue_context = f"Summary: {curr_summary}\nDescription: {curr_description}"
-        
-        chain = PAYLOAD_PROMPT | LLM
-        llm_response_content = chain.invoke({
+        prompt_data_dict = {
             "current_issue_data": clean_current_issue_context,
             "current_issue_key": issue_key,
             "similar_issues_context": similar_issues_context
-        }).content
+        }
+        full_prompt_text = PAYLOAD_PROMPT.format(**prompt_data_dict)
+        print("\n" + "="*50)
+        print(f"--- INICIO: PROMPT COMPLETO PARA {issue_key} ---")
+        print(full_prompt_text)
+        print(f"--- FIN: PROMPT COMPLETO PARA {issue_key} ---")
+        print("="*50 + "\n")
+        chain = PAYLOAD_PROMPT | LLM
+        llm_response_content = chain.invoke(prompt_data_dict).content
         print(f"LLM Response for {issue_key}:\n{llm_response_content}")
         match = re.search(r'```json\s*(\{.*?\})\s*```', llm_response_content, re.DOTALL)
         if not match:
