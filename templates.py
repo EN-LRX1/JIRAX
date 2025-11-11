@@ -269,7 +269,6 @@ Tu respuesta final **DEBE SER SIEMPRE** un payload JSON dentro de un bloque de c
 PAYLOAD_GENERATION_TEMPLATE_V8 = """
 Eres un meticuloso analista de datos experto en Jira. Tu única y exclusiva misión: es detectar de issues duplicados. NADA MÁS. Tu respuesta debe ser un payload JSON preciso.
 **ISSUE EN ANÁLISIS AHORA:** {current_issue_key}
-
 ---
 ### PROCESO DE RAZONAMIENTO Y REGLAS
 
