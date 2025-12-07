@@ -15,10 +15,10 @@ load_dotenv()
 JIRA_DOMAIN = os.getenv("JIRA_DOMAIN")
 EMAIL = os.getenv("EMAIL")
 API_TOKEN = os.getenv("API_TOKEN")
-LLM_MODEL = os.getenv("LLM_MODEL", "gpt-oss:latest")
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
+LLM_MODEL = os.getenv("LLM_MODEL", "jirax-pro:latest")
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "mxbai-embed-large:latest")
 OUTPUT_FILE = os.getenv("OUTPUT_FILE", "ucm_issues.csv")
-LLM = ChatOllama(model=LLM_MODEL, temperature=0)
+LLM = ChatOllama(model=LLM_MODEL, temperature=0, format="json")
 EMBEDDINGS = OllamaEmbeddings(model=EMBEDDING_MODEL)
 PAYLOAD_PROMPT = PromptTemplate.from_template(PAYLOAD_GENERATION_TEMPLATE)
 MAX_DESCRIPTION_LENGTH = 2000
@@ -142,17 +142,31 @@ def process_single_issue(issue_key: str, all_issues_data: dict, vector_store):
         chain = PAYLOAD_PROMPT | LLM
         llm_response_content = chain.invoke(prompt_data_dict).content
         print(f"LLM Response for {issue_key}:\n{llm_response_content}")
-        match = re.search(r'```json\s*(\{.*?\})\s*```', llm_response_content, re.DOTALL)
-        if not match:
-            return f"{issue_key}: Skipped (LLM did not generate valid JSON).", []
+        payload_json = None
         
         found_dup_keys = []
-        payload_json = json.loads(match.group(1))
+        try:
+            payload_json = json.loads(llm_response_content)
+        except json.JSONDecodeError:
+            # Plan B: Si por alguna razón extraña mete texto antes/después, buscamos las llaves {}
+            print(f"⚠️ {issue_key}: JSON directo falló, intentando extracción con Regex de respaldo...")
+            match = re.search(r'\{.*\}', llm_response_content, re.DOTALL)
+            if match:
+                try:
+                    payload_json = json.loads(match.group(0))
+                except:
+                    pass
+        
+        # Si después de los dos intentos sigue vacío, cancelamos
+        if not payload_json:
+            return f"{issue_key}: Skipped (LLM did not generate valid JSON).", []
+        
         duplicate_text = payload_json.get("customfield_10602", "")
         if not (duplicate_text.strip().startswith("✔️") or duplicate_text.strip().startswith("❗")):
             error_msg = f"LLM hallucination detected! Invalid format: '{duplicate_text}'"
             print(f"ERROR for {issue_key}: {error_msg}")
             return f"{issue_key}: Skipped ({error_msg})", []
+        
         found_dup_keys = re.findall(r"([A-Z]{2,}-\d+)", duplicate_text)
         final_payload_str = json.dumps({"fields": payload_json})
         api_result_message = update_jira_issue_api(issue_key, final_payload_str)
