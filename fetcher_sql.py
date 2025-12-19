@@ -58,67 +58,6 @@ def atomic_write_csv(path, headers, rows):
             except Exception:
                 pass
 
-# --- SQLITE SETUP ---
-def init_sqlite(db_path):
-    con = sqlite3.connect(db_path)
-    con.execute("PRAGMA journal_mode=WAL;")
-    con.execute("""
-    CREATE TABLE IF NOT EXISTS issues (
-        key TEXT PRIMARY KEY,
-        summary TEXT,
-        business TEXT,
-        area TEXT,
-        owner TEXT,
-        assignee TEXT,
-        status TEXT,
-        main_impact_type TEXT,
-        type_field TEXT,
-        value_field TEXT,
-        feasibility TEXT,
-        prioridad TEXT,
-        riesgo TEXT,
-        transversal TEXT,
-        created TEXT,
-        updated TEXT,
-        descripcion TEXT,
-        decision TEXT,
-        raw_json TEXT,
-        last_seen INTEGER
-    );
-    """)
-    con.commit()
-    return con
-
-def upsert_issue_sqlite(con, rec):
-    sql = """
-    INSERT INTO issues(key, summary, business, area, owner, assignee, status,
-        main_impact_type, type_field, value_field, feasibility, prioridad,
-        transversal, riesgo, created, updated, descripcion, decision, raw_json, last_seen)
-    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-    ON CONFLICT(key) DO UPDATE SET
-      summary=excluded.summary,
-      business=excluded.business,
-      area=excluded.area,
-      owner=excluded.owner,
-      assignee=excluded.assignee,
-      status=excluded.status,
-      main_impact_type=excluded.main_impact_type,
-      type_field=excluded.type_field,
-      value_field=excluded.value_field,
-      feasibility=excluded.feasibility,
-      prioridad=excluded.prioridad,
-      riesgo=excluded.riesgo,
-      transversal=excluded.transversal,
-      created=excluded.created,
-      updated=excluded.updated,
-      descripcion=excluded.descripcion,
-      decision=excluded.decision,
-      raw_json=excluded.raw_json,
-      last_seen=excluded.last_seen;
-    """
-    con.execute(sql, rec)
-    con.commit()
-
 def fetch_all_issues():
     JIRA_DOMAIN = os.environ.get("JIRA_DOMAIN")
     EMAIL       = os.environ.get("EMAIL")
@@ -191,8 +130,6 @@ def fetch_all_issues():
 
     return all_issues
 
-
-# --- MAIN: fetch, write CSV and upsert SQLite ---
 def fetch_and_save_issues():
     issues = fetch_all_issues()
     if not issues:
@@ -206,7 +143,7 @@ def fetch_and_save_issues():
     ]
 
     csv_rows = []
-    con = init_sqlite(OUTPUT_DB)
+
 
     for issue in issues:
         fields = issue.get("fields", {}) or {}
@@ -252,39 +189,8 @@ def fetch_and_save_issues():
             decision_value
         ])
 
-        # upsert SQLite (raw_json para debug)
-        raw_json = json.dumps(issue, ensure_ascii=False)
-        last_seen = int(time.time())
-        rec = (
-            issue_key,
-            summary,
-            business_value,
-            area_value,
-            owner_value,
-            assignee_value,
-            status_value,
-            main_impact_type_value,
-            type_value,
-            value_value,
-            feasibility_value,
-            prioridad_value,
-            riesgo_value,
-            transversal,
-            created,
-            updated,
-            descripcion_objectives,
-            decision_value,
-            raw_json,
-            last_seen
-        )
-        upsert_issue_sqlite(con, rec)
-
     atomic_write_csv(OUTPUT_CSV, headers_list, csv_rows)
-    con.close()
     print(f"CSV guardado en: {OUTPUT_CSV}")
-    print(f"SQLite guardado en: {OUTPUT_DB} (tabla 'issues')")
 
-
-# --- RUN ---
 if __name__ == "__main__":
     fetch_and_save_issues()

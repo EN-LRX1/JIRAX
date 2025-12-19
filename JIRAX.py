@@ -184,7 +184,7 @@ def main():
         return
     print("\nInitialization complete. Agent is ready.")
     while True:
-        user_input = input("\n> Which UCM-X (example: UCM-7) issues would you like to process? (If you dont especify UCM, all will be processed) ")
+        user_input = input("\n> Which UCM-X (example: UCM-7) issues would you like to process? (If you dont especify UCM, all will be processed):")
         if user_input.lower() in ['exit', 'quit', 'salir']:
             break
         
