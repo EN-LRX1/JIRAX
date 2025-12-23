@@ -142,7 +142,7 @@ def process_single_issue(issue_key: str, all_issues_data: dict, vector_store):
         try:
             payload_json = json.loads(llm_response_content)
         except json.JSONDecodeError:
-            # Plan B: Si por alguna razón extraña mete texto antes/después, buscamos las llaves {}
+        
             print(f"⚠️ {issue_key}: JSON directo falló, intentando extracción con Regex de respaldo...")
             match = re.search(r'\{.*\}', llm_response_content, re.DOTALL)
             if match:
@@ -151,7 +151,7 @@ def process_single_issue(issue_key: str, all_issues_data: dict, vector_store):
                 except:
                     pass
         
-        # Si después de los dos intentos sigue vacío, cancelamos
+
         if not payload_json:
             return f"{issue_key}: Skipped (LLM did not generate valid JSON).", []
         
@@ -217,7 +217,7 @@ def main():
                     
                     tasks_pending_tracker.discard(key_to_auto_update)
                         
-                    print(f"\n--- Metacognition: Proactively updating {key_to_auto_update} as part of clúster ---")
+                    print(f"\n Metacognition: Proactively updating {key_to_auto_update} as part of clúster")
                     
                     dup_payload_str = json.dumps({
                         "fields": {
