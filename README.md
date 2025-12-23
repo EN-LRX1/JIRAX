@@ -1,5 +1,5 @@
 
-# Jiracaf Agents — Agent V8
+# Jiracaf Agents — JIRAX Agent
 
 Un agente autónomo para detección de duplicados y actualizaciones en Jira que combina LLM local (Ollama), embeddings y una memoria vectorial (FAISS) para análisis contextual avanzado.
 
@@ -33,20 +33,21 @@ EMAIL=tu_email@empresa.com
 API_TOKEN=tu_token
 OUTPUT_FILE=ucm_issues.csv
 JIRA_VERIFY=false          
-LLM_MODEL=gpt-oss:latest     
-EMBEDDING_MODEL=nomic-embed-text
+LLM_MODEL=jirax-pro:latest (OWN FINE TUNED MODEL)   
+EMBEDDING_MODEL=mxbai-embed-large:latest
+MAX_DESCRIPTION_LENGTH = 2000
 ```
 
 ---
 
-## Cómo ejecutar `agent_v8.py`
+## Cómo ejecutar `JIRAX.py`
 
 1. Asegúrate de tener Ollama corriendo y el modelo/embedding disponibles.
 2. Carga issues desde Jira a CSV (el script `fetcher_sql.py` lo hace automáticamente al iniciar).
 3. Ejecuta:
 
 ```bash
-python agent_v8.py
+python JIRAX.py
 ```
 
 Flujo interactivo: el agente pedirá una instrucción; puedes indicar una clave específica o dejar que procese múltiples issues, por ejemplo:
@@ -59,7 +60,7 @@ O puedes pedir acciones sobre issues concretos, p. ej. `UCM-62` o `UCM-64`.
 
 ---
 
-## Qué hace internamente V8
+## Qué hace internamente
 
 +- `fetcher_sql.fetch_and_save_issues()` obtiene issues via API y guarda `ucm_issues.csv`.
 +- `load_csv_to_memory()` carga el CSV en memoria (diccionario por key). 
@@ -89,7 +90,7 @@ O puedes pedir acciones sobre issues concretos, p. ej. `UCM-62` o `UCM-64`.
 1) Inicia el agente:
 
 ```bash
-python agent_v8.py
+python JIRAX.py
 ```
 
 2) Pedir detección de duplicados (proceso por issue):
@@ -116,7 +117,7 @@ SENDING: PUT https://.../issue/UCM-62 with Payload: {"fields": {"customfield_106
 
 ```
 Jiracaf_Agents/
-├── agent_v8.py         
+├── JIRAX.py         
 ├── fetcher_sql.py      
 ├── templates.py        
 ├── ucm_issues.csv    
